@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Quiz System</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            max-width: auto;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+        }
+        .creator-section, .exam-section {
+            flex: 1;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .monitor-panel {
+            width: 200px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+        }
+        .question-status {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .status-item {
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .status-item.answered {
+            background: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        .question-editor {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #eee;
+            position: relative;
+        }
+        .image-preview {
+            max-width: 1000px;
+            margin: 10px 0;
+            display: none;
+        }
+        .quiz-image {
+            max-width: 100%;
+            height: auto;
+            margin: 10px 0;
+        }
+        .timer {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .hidden {
+            display: none;
+        }
+        .correct-answer-input {
+            margin: 15px 0;
+            padding: 10px;
+            background: #f8f8f8;
+        }
+        button {
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        #reviewPanel {
+    margin-top: 30px;
+    border-top: 2px solid #ddd;
+    padding-top: 20px;
+    text-align: center;
+}
+
+.question-status {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.status-box {
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    border: 2px solid;
+    text-align: center;
+    transition: transform 0.2s;
+}
+
+.status-box:hover {
+    transform: scale(1.1);
+}
+
+.status-box.correct {
+    background-color: #4CAF50;
+    color: white;
+    border-color: #4CAF50;
+}
+
+.status-box.partial {
+    background-color: #FFC107;
+    color: black;
+    border-color: #FFC107;
+}
+
+.status-box.wrong {
+    background-color: #f44336;
+    color: white;
+    border-color: #f44336;
+}
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="monitor-panel hidden" id="monitorPanel">
+            <h3>Progress</h3>
+            <div class="question-status" id="questionStatus"></div>
+        </div>
+
+        <div class="creator-section" id="quizCreator">
+            <h2>Create Quiz</h2>
+            <div>
+                <label>Exam Duration (minutes): </label>
+                <input type="number" id="examDuration" value="45" min="1">
+            </div>
+            <div id="questionsContainer">
+                <div class="question-editor">
+                    <button onclick="removeQuestion(this)">×</button>
+                    <div>
+                        <label>Question Text: </label>
+                        <input type="text" class="question-text" required>
+                    </div>
+                    <div class="image-paste-container">
+                        <label>Image: </label>
+                        <input type="text" class="question-image" placeholder="Paste image here (Ctrl+V)">
+                        <img class="image-preview" src="#" alt="Preview">
+                    </div>
+                    <div class="question-type-section">
+                        <label>Type: </label>
+                        <select class="question-type" onchange="handleQuestionTypeChange(this)">
+                            <option value="mcq">Single Answer</option>
+                            <option value="msq">Multiple Answers</option>
+                            <option value="nat">Numerical Answer</option>
+                        </select>
+                    </div>
+                    <div class="question-options">
+                        <label>Options (comma separated): </label>
+                        <input type="text" class="options-list" value="a,b,c,d">
+                    </div>
+                </div>
+            </div>
+            <button onclick="addNewQuestion()">Add Question</button>
+            <button onclick="startExam()">Start Exam</button>
+        </div>
+
+        <div class="exam-section hidden" id="examInterface">
+            <div class="timer">Time Left: <span id="time">00:00</span></div>
+            <form id="quizForm"></form>
+            <button onclick="submitQuiz()">Submit Quiz</button>
+            <div id="result" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        let quizData = [];
+        let timeLeft = 0;
+        let timerId;
+        let correctAnswers = [];
+
+        // Image Handling
+        document.addEventListener('paste', async (e) => {
+            const items = e.clipboardData.items;
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    const dataUrl = await readFileAsDataURL(blob);
+                    const activeInput = document.querySelector('.question-image:focus');
+                    if (activeInput) {
+                        activeInput.value = dataUrl;
+                        activeInput.parentElement.querySelector('.image-preview').src = dataUrl;
+                        activeInput.parentElement.querySelector('.image-preview').style.display = 'block';
+                    }
+                }
+            }
+        });
+
+        function readFileAsDataURL(blob) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.readAsDataURL(blob);
+            });
+        }
+        const questionDiv = document.createElement('div');
+questionDiv.className = 'question';
+questionDiv.id = `question-${index}`;
+        // Quiz Creation
+        function addNewQuestion() {
+            const newQuestion = document.createElement('div');
+            newQuestion.className = 'question-editor';
+            newQuestion.innerHTML = `
+                <button onclick="removeQuestion(this)">×</button>
+                <div>
+                    <label>Question Text: </label>
+                    <input type="text" class="question-text" required>
+                </div>
+                <div class="image-paste-container">
+                    <label>Image: </label>
+                    <input type="text" class="question-image" placeholder="Paste image here (Ctrl+V)">
+                    <img class="image-preview" src="#" alt="Preview">
+                </div>
+                <div class="question-type-section">
+                    <label>Type: </label>
+                    <select class="question-type" onchange="handleQuestionTypeChange(this)">
+                        <option value="mcq">Single Answer</option>
+                        <option value="msq">Multiple Answers</option>
+                        <option value="nat">Numerical Answer</option>
+                    </select>
+                </div>
+                <div class="question-options">
+                    <label>Options (comma separated): </label>
+                    <input type="text" class="options-list" value="a,b,c,d">
+                </div>
+            `;
+            document.getElementById('questionsContainer').appendChild(newQuestion);
+        }
+
+        function removeQuestion(button) {
+            button.parentElement.remove();
+        }
+
+        function handleQuestionTypeChange(select) {
+            const optionsSection = select.closest('.question-editor').querySelector('.question-options');
+            optionsSection.style.display = select.value === 'nat' ? 'none' : 'block';
+        }
+
+        // Exam Logic
+        function startExam() {
+            quizData = [];
+            const editors = document.getElementsByClassName('question-editor');
+            
+            Array.from(editors).forEach(editor => {
+                const type = editor.querySelector('.question-type').value;
+                const options = editor.querySelector('.options-list').value.split(',').map(o => o.trim());
+                
+                quizData.push({
+                    type: type,
+                    question: editor.querySelector('.question-text').value,
+                    image: editor.querySelector('.question-image').value,
+                    options: options
+                });
+            });
+
+            document.getElementById('quizCreator').classList.add('hidden');
+            document.getElementById('examInterface').classList.remove('hidden');
+            document.getElementById('monitorPanel').classList.remove('hidden');
+            
+            timeLeft = document.getElementById('examDuration').value * 60;
+            updateTimerDisplay();
+            timerId = setInterval(updateTimer, 1000);
+            initializeQuiz();
+            initializeMonitor();
+        }
+
+        function initializeQuiz() {
+            const form = document.getElementById('quizForm');
+            form.innerHTML = '';
+            
+            quizData.forEach((question, index) => {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'question';
+                questionDiv.innerHTML = `
+                    <h3>Q${index + 1}: ${question.question}</h3>
+                    ${question.image ? `<img src="${question.image}" class="quiz-image">` : ''}
+                    ${renderQuestionInput(question, index)}
+                `;
+                form.appendChild(questionDiv);
+            });
+            
+            setupAnswerListeners();
+        }
+
+        function renderQuestionInput(question, index) {
+            if (question.type === 'mcq') {
+                return question.options.map((option, optIndex) => `
+                    <label>
+                        <input type="radio" name="q${index}" value="${option}">
+                        ${String.fromCharCode(65 + optIndex)}. ${option}
+                    </label><br>
+                `).join('');
+            }
+            if (question.type === 'msq') {
+                return question.options.map((option, optIndex) => `
+                    <label>
+                        <input type="checkbox" name="q${index}" value="${option}">
+                        ${String.fromCharCode(65 + optIndex)}. ${option}
+                    </label><br>
+                `).join('');
+            }
+            if (question.type === 'nat') {
+                return `<input type="number" name="q${index}">`;
+            }
+        }
+
+        // Monitoring Panel
+        function initializeMonitor() {
+            const statusContainer = document.getElementById('questionStatus');
+            statusContainer.innerHTML = '';
+            
+            quizData.forEach((_, index) => {
+                const statusItem = document.createElement('div');
+                statusItem.className = 'status-item';
+                statusItem.textContent = index + 1;
+                statusItem.onclick = () => scrollToQuestion(index);
+                statusContainer.appendChild(statusItem);
+            });
+            
+            updateMonitor();
+        }
+
+        function scrollToQuestion(index) {
+            document.querySelectorAll('.question')[index].scrollIntoView({
+                behavior: 'smooth'
+            });
+        }
+
+        function updateMonitor() {
+            document.querySelectorAll('.status-item').forEach((item, index) => {
+                item.classList.toggle('answered', isQuestionAnswered(index));
+            });
+        }
+
+        function isQuestionAnswered(index) {
+            const question = quizData[index];
+            if (question.type === 'msq') {
+                return document.querySelectorAll(`input[name="q${index}"]:checked`).length > 0;
+            }
+            if (question.type === 'mcq') {
+                return document.querySelector(`input[name="q${index}"]:checked`) !== null;
+            }
+            return document.querySelector(`input[name="q${index}"]`).value !== '';
+        }
+
+        function setupAnswerListeners() {
+            document.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', updateMonitor);
+            });
+        }
+
+        // Timer
+        function updateTimer() {
+            timeLeft--;
+            updateTimerDisplay();
+            if (timeLeft <= 0) submitQuiz();
+        }
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.getElementById('time').textContent = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        // Submission & Grading
+        function submitQuiz() {
+    clearInterval(timerId);
+    const resultDiv = document.getElementById('result');
+    let resultsHTML = '<h2>Results</h2>';
+
+    quizData.forEach((question, index) => {
+        const userAnswer = getUserAnswer(question.type, index);
+        resultsHTML += `
+            <div class="question-result">
+                <h3>Q${index + 1}: ${question.question}</h3>
+                ${question.image ? `<img src="${question.image}" class="quiz-image">` : ''}
+                <p>Your answer: ${formatAnswer(userAnswer, question)}</p>
+                <div class="correct-answer-input">
+                    ${renderCorrectionInput(question, index)}
+                </div>
+            </div>
+        `;
+    });
+
+    // Append Calculate Score button and Review Panel only ONCE
+    resultsHTML += `
+        <button onclick="calculateScore()">Calculate Score</button>
+        <div id="reviewPanel">
+            <h3>Answer Review</h3>
+            <div class="question-status" id="reviewStatus"></div>
+        </div>
+    `;
+
+    resultDiv.innerHTML = resultsHTML;
+}
+
+
+        function getUserAnswer(type, index) {
+            if (type === 'msq') {
+                return Array.from(document.querySelectorAll(`input[name="q${index}"]:checked`))
+                    .map(input => input.value);
+            }
+            if (type === 'mcq') {
+                const selected = document.querySelector(`input[name="q${index}"]:checked`);
+                return selected ? selected.value : null;
+            }
+            return document.querySelector(`input[name="q${index}"]`)?.value || null;
+        }
+
+        function formatAnswer(answer, question) {
+            if (!answer || (Array.isArray(answer) && answer.length === 0)) return 'Not answered';
+            if (question.type === 'nat') return answer;
+            
+            if (Array.isArray(answer)) {
+                return answer.map(ans => getOptionLetter(ans, question.options)).join(', ');
+            }
+            return getOptionLetter(answer, question.options);
+        }
+
+        function getOptionLetter(answerText, options) {
+            const index = options.indexOf(answerText);
+            return index >= 0 ? String.fromCharCode(65 + index) : 'Invalid';
+        }
+
+        function renderCorrectionInput(question, index) {
+            let html = '<p>Set correct answer:</p>';
+            switch(question.type) {
+                case 'mcq':
+                    html += `<select id="correct${index}">`;
+                    question.options.forEach((opt, optIndex) => {
+                        html += `<option value="${opt}">${String.fromCharCode(65 + optIndex)}</option>`;
+                    });
+                    html += '</select>';
+                    break;
+                case 'msq':
+                    question.options.forEach((opt, optIndex) => {
+                        html += `
+                            <label>
+                                <input type="checkbox" value="${opt}" id="correct${index}_${optIndex}">
+                                ${String.fromCharCode(65 + optIndex)}
+                            </label>
+                        `;
+                    });
+                    break;
+                case 'nat':
+                    html += `<input type="number" id="correct${index}">`;
+                    break;
+            }
+            return html;
+        }
+
+        function calculateScore() {
+            let score = 0;
+            quizData.forEach((question, index) => {
+                const userAnswer = getUserAnswer(question.type, index);
+                const correct = getCorrectAnswer(question.type, index);
+                
+                if (question.type === 'msq') {
+                    if (arraysEqual(new Set(userAnswer), new Set(correct))) score++;
+                } else {
+                    if (userAnswer?.toString() === correct?.toString()) score++;
+                }
+            });
+
+            const scoreHTML = `
+                <div class="score-summary">
+                    <h3>Final Score: ${score}/${quizData.length}</h3>
+                    <p>Percentage: ${Math.round((score/quizData.length)*100)}%</p>
+                </div>
+            `;
+            document.getElementById('result').innerHTML += scoreHTML;
+
+            const reviewContainer = document.getElementById('reviewStatus');
+reviewContainer.innerHTML = '';
+
+quizData.forEach((question, index) => {
+    const userAnswer = getUserAnswer(question.type, index);
+    const correct = getCorrectAnswer(question.type, index);
+
+    let status = 'wrong';
+    if (question.type === 'msq') {
+        const userSet = new Set(userAnswer);
+        const correctSet = new Set(correct);
+        if (arraysEqual(userSet, correctSet)) {
+            status = 'correct';
+        } else if ([...userSet].some(x => correctSet.has(x))) {
+            status = 'partial';
+        }
+    } else {
+        if (userAnswer?.toString() === correct?.toString()) {
+            status = 'correct';
+        }
+    }
+
+    const item = document.createElement('div');
+    item.className = `status-box ${status}`;
+    item.textContent = index + 1;
+    item.title = `Question ${index + 1}: ${status}`;
+
+    // Scroll to the question when clicked
+    item.addEventListener('click', () => {
+        const questionDiv = document.getElementById(`question-${index}`);
+        if (questionDiv) {
+            questionDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    });
+
+    reviewContainer.appendChild(item);
+});
+        }
+
+        function getCorrectAnswer(type, index) {
+            if (type === 'msq') {
+                return Array.from(document.querySelectorAll(`input[id^="correct${index}_"]:checked`))
+                    .map(input => input.value);
+            }
+            return document.getElementById(`correct${index}`).value;
+        }
+
+        function arraysEqual(a, b) {
+            return a.size === b.size && [...a].every(v => b.has(v));
+        }
+        function setupAnswerListeners() {
+    document.querySelectorAll('input').forEach(input => {
+        input.addEventListener('change', updateMonitor);
+    });
+
+    // Enable deselecting radio buttons (for MCQ)
+    const radioButtons = document.querySelectorAll('input[type="radio"]');
+    let lastChecked = null;
+
+    radioButtons.forEach(radio => {
+        radio.addEventListener('click', function (e) {
+            if (lastChecked === radio) {
+                radio.checked = false;
+                lastChecked = null;
+                updateMonitor(); // Refresh progress tracking
+            } else {
+                lastChecked = radio;
+            }
+        });
+    });
+
+}
+
+    </script>
+</body>
+</html>
